@@ -41,11 +41,21 @@ var client;
 
 // Restart 6sense processes if the date is in the range.
 function startMeasurements(bunching_period) {
-    setInterval(function(){
-        // spawn("../")
+        
+    var proc = spawn("../sensor-pusher/main", ['LIS', '1000', '800', '0']);
 
-        seismic_sensor.emit("alarm", {x: Math.random(), y: Math.random(), z: Math.random()});
-    }, bunching_period)
+    proc.stdout.on('data', function(buffer){
+        var parts = buffer.toString().split(" ");
+        var data = {x: parseFloat(parts[0]), y: parseFloat(parts[1]), z: parseFloat(parts[2])};
+        seismic_sensor.emit("alarm", data);
+    });
+
+    proc.on('close', function(code) { 
+        console.log("sensor-pusher ended unexpectedily.");
+    });
+
+    // seismic_sensor.emit("alarm", {x: Math.random(), y: Math.random(), z: Math.random()});
+ 
 }
 
 function changeDate(newDate) {
