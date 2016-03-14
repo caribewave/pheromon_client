@@ -42,7 +42,7 @@ var client;
 // Restart 6sense processes if the date is in the range.
 function startMeasurements(bunching_period) {
         
-    var proc = spawn("../sensor-pusher/main", ['LIS', '1000', '800', '0']);
+    var proc = spawn("/home/pi/sensor-pusher/main", ['LIS', '1000', '800', '0']);
 
     proc.stdout.on('data', function(buffer){
         var parts = buffer.toString().split(" ");
