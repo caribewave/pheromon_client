@@ -14,10 +14,23 @@ var SSH_TIMEOUT = 20 * 1000;
 // ===
 
 var sshProcess;
+var sensorPusher;
+var client;
+var dataBunch = [];
 var inited = false;
 var events = require('events');
 var seismic_sensor = new events.EventEmitter();
 
+// Debug logger
+var DEBUG = process.env.DEBUG || false;
+var debug = function() {
+    if (DEBUG) {
+        [].unshift.call(arguments, '[DEBUG pheromon-client] ');
+        console.log.apply(console, arguments);
+    }
+};
+
+// call to sensor pusher
 seismic_sensor.on('alarm', function(message){
     console.log("sending ", message)
     var payload = JSON.stringify([{
@@ -27,60 +40,26 @@ seismic_sensor.on('alarm', function(message){
     send('measurement/'+id+'/sismic', payload, {qos: 1});
 });
 
-// Debug logger
-var DEBUG = process.env.DEBUG || false;
-var debug = function() {
-    if (DEBUG) {
-        [].unshift.call(arguments, '[DEBUG 6brain] ');
-        console.log.apply(console, arguments);
-    }
-};
-
-// mqtt client
-var client;
-
-// Restart 6sense processes if the date is in the range.
 function startMeasurements(bunching_period) {
         
-    var proc = spawn("/home/pi/sensor-pusher/main", ['LIS', '1000', '800', '0']);
+    sensorPusher = spawn("/home/pi/sensor-pusher/main", ['ADXL', '1000', '800', '0']);
 
-    proc.stdout.on('data', function(buffer){
+    sensorPusher.stdout.on('data', function(buffer){
         var parts = buffer.toString().split(" ");
-        var data = {x: parseFloat(parts[0]), y: parseFloat(parts[1]), z: parseFloat(parts[2])};
+        var data = {x: parseFloat(parts[0]), 
+            y: parseFloat(parts[1]), 
+            z: parseFloat(parts[2]),
+            dt: new Date().toISOString()
+        };
+        // dataBunch.push(data);
         seismic_sensor.emit("alarm", data);
     });
 
-    proc.on('close', function(code) { 
+    sensorPusher.on('close', function(code) { 
         console.log("sensor-pusher ended unexpectedily.");
+        sensorPusher = undefined;
     });
-
-    // seismic_sensor.emit("alarm", {x: Math.random(), y: Math.random(), z: Math.random()});
  
-}
-
-function changeDate(newDate) {
-    return new Promise(function(resolve, reject) {
-
-        // Change the date
-        var child = spawn('date', ['-s', newDate]);
-
-        child.stderr.on('data', function(data) {
-            console.log(data.toString());
-        });
-
-
-        child.on('close', function () {
-            // Restart all cronjobs
-            startJob = createStartJob();
-            stopJob = createStopJob();
-            if (wifi.recordTrajectories)
-                trajJob = createTrajectoryJob();
-
-            restart6senseIfNeeded()
-            .then(resolve)
-            .catch(reject);
-        });
-    });
 }
 
 // MQTT BLOCK
@@ -130,11 +109,7 @@ function mqttConnect() {
         var message = buffer.toString();
         console.log("data received :", message, 'destination', destination);
 
-        if (destination) {
-            binServer.emit(destination, JSON.parse(message));
-        }
-        else
-            commandHandler(message, send, 'cmdResult/'+id);
+        commandHandler(message, send, 'cmdResult/'+id);
     });
 }
 
@@ -193,11 +168,13 @@ function commandHandler(fullCommand, sendFunction, topic) { // If a status is se
                     }, 1000);
                     break;
                 case 'resumerecord':         // Start recording
-                    // wifi.record(MEASURE_PERIOD);
+                    if (sensorPusher)
+                        startMeasurements(MEASURE_PERIOD);
                     sendFunction(topic, JSON.stringify({command: command, result: 'OK'}));
                     break;
                 case 'pauserecord':          // Pause recording
-                    // wifi.pause();
+                    if (sensorPusher)
+                        sensorPusher.kill('SIGINT');
                     sendFunction(topic, JSON.stringify({command: command, result: 'OK'}));
                     break;
                 case 'closetunnel':          // Close the SSH tunnel
@@ -220,13 +197,8 @@ function commandHandler(fullCommand, sendFunction, topic) { // If a status is se
                     if (commandArgs[1].toString().match(/^\d{1,5}$/)) {
                         MEASURE_PERIOD = parseInt(commandArgs[1], 10);
 
-                        restart6senseIfNeeded()
-                        .then(function () {
-                            sendFunction(topic, JSON.stringify({command: command, result: commandArgs[1]}));
-                        })
-                        .catch(function (err) {
-                            console.log('Error in restart6senseIfNeeded :', err);
-                        });
+                        // TODO: restart measures
+                        sendFunction(topic, JSON.stringify({command: command, result: commandArgs[1]}));
 
                     } else {
                         console.log('Period is not an integer ', commandArgs[1]);
