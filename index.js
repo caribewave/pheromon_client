@@ -42,7 +42,7 @@ seismic_sensor.on('alarm', function(message){
 
 function startMeasurements(bunching_period) {
         
-    sensorPusher = spawn("/home/pi/sensor-pusher/main", ['ADXL', '1000', '800', '0']);
+    sensorPusher = spawn("/home/pi/sensor-pusher/main", ['LIS', '1000', '800', '10000', '0']);
 
     sensorPusher.stdout.on('data', function(buffer){
         var parts = buffer.toString().split(" ");
@@ -80,7 +80,7 @@ function mqttConnect() {
 
     client = mqtt.connect('mqtt://' + PRIVATE.host + ':' + PRIVATE.port,
         {
-            username: id,
+            username: "pheroman",
             password: PRIVATE.mqttToken,
             clientId: id,
             keepalive: 10,
